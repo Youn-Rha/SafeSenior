@@ -1,0 +1,7 @@
+# use python 3.10
+Pyside2
+numpy
+pyqtgraph
+numpy
+pyopengl
+pandas

@@ -1,0 +1,11 @@
+# use python 3.10 or .9
+Pyside2
+pyserial
+numpy
+pyqtgraph
+numpy
+tensorflow
+pyopengl
+# json-fix
+scikit-learn
+pandas
