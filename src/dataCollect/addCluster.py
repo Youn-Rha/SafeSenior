@@ -1,3 +1,7 @@
+# ✅ Step 3: Mahalanobis 거리 기반 Cost 계산 도입
+# 파일명: cluster_step3_mahalanobis.py
+# 설명: 거리 계산 시 Mahalanobis 거리 적용으로 클러스터 간 유사성 반영 강화
+
 import pandas as pd
 from sklearn.cluster import DBSCAN
 from scipy.spatial import distance
@@ -34,6 +38,14 @@ class ClusterKalman:
 
     def update(self, measurement):
         self.kf.update(measurement)
+
+def mahalanobis_dist(x, y, cov):
+    delta = x - y
+    try:
+        inv_cov = np.linalg.inv(cov + np.eye(3) * 1e-3)
+    except np.linalg.LinAlgError:
+        inv_cov = np.eye(3)
+    return float(delta.T @ inv_cov @ delta)
 
 class Cluster():        
     def __init__(self):
@@ -104,20 +116,20 @@ class Cluster():
         for i in range(first_frame_num, first_frame_num + frame_len - 1):
             current_f = global_clustered_data[global_clustered_data['frameNum'] == i].reset_index(drop=True)
             next_f = clustered_data_agg[clustered_data_agg['frameNum'] == i + 1].reset_index(drop=True)
-            cost_matrix = np.zeros((len(current_f), len(next_f)))
+            cost_matrix = np.full((len(current_f), len(next_f)), np.inf)
 
             for i1, row1 in current_f.iterrows():
                 g_id = row1['global_cluster'] + glob_clust_start
                 pred = self.trackers[g_id].predict()
+                cov = self.trackers[g_id].kf.P[:3, :3]
                 for i2, row2 in next_f.iterrows():
                     obs = row2[['xPos', 'yPos', 'zPos']].values
-                    cost_matrix[i1, i2] = np.linalg.norm(pred - obs)
+                    cost_matrix[i1, i2] = mahalanobis_dist(obs, pred, cov)
 
             row_idx, col_idx = linear_sum_assignment(cost_matrix)
-
             assigned_next = set()
             for r, c in zip(row_idx, col_idx):
-                if cost_matrix[r, c] < 3.5:
+                if cost_matrix[r, c] < 9.0:
                     next_f.loc[c, 'global_cluster'] = current_f.loc[r, 'global_cluster']
                     obs = next_f.loc[c, ['xPos', 'yPos', 'zPos']].values
                     g_id = current_f.loc[r, 'global_cluster'] + glob_clust_start
