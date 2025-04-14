@@ -1,7 +1,3 @@
-# ✅ Step 3: Mahalanobis 거리 기반 Cost 계산 도입
-# 파일명: cluster_step3_mahalanobis.py
-# 설명: 거리 계산 시 Mahalanobis 거리 적용으로 클러스터 간 유사성 반영 강화
-
 import pandas as pd
 from sklearn.cluster import DBSCAN
 from scipy.spatial import distance
@@ -12,6 +8,7 @@ from filterpy.kalman import KalmanFilter
 SEQ_SIZE = 5
 EPS = 0.6
 MIN_SAMPLE = 20
+GATING_THRESHOLD = 9.0
 
 class ClusterKalman:
     def __init__(self, initial_pos):
@@ -124,12 +121,14 @@ class Cluster():
                 cov = self.trackers[g_id].kf.P[:3, :3]
                 for i2, row2 in next_f.iterrows():
                     obs = row2[['xPos', 'yPos', 'zPos']].values
-                    cost_matrix[i1, i2] = mahalanobis_dist(obs, pred, cov)
+                    d2 = mahalanobis_dist(obs, pred, cov)
+                    if d2 < GATING_THRESHOLD:
+                        cost_matrix[i1, i2] = d2
 
             row_idx, col_idx = linear_sum_assignment(cost_matrix)
             assigned_next = set()
             for r, c in zip(row_idx, col_idx):
-                if cost_matrix[r, c] < 9.0:
+                if cost_matrix[r, c] < GATING_THRESHOLD:
                     next_f.loc[c, 'global_cluster'] = current_f.loc[r, 'global_cluster']
                     obs = next_f.loc[c, ['xPos', 'yPos', 'zPos']].values
                     g_id = current_f.loc[r, 'global_cluster'] + glob_clust_start
