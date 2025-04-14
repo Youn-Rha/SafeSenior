@@ -1,6 +1,7 @@
 import pandas as pd
 from sklearn.cluster import DBSCAN
 from scipy.spatial import distance
+from scipy.optimize import linear_sum_assignment
 import numpy as np
 from filterpy.kalman import KalmanFilter
 
@@ -101,33 +102,36 @@ class Cluster():
         generated_cluster_n = int(global_clustered_data['global_cluster'].max()) + 1
 
         for i in range(first_frame_num, first_frame_num + frame_len - 1):
-            current_f = global_clustered_data[global_clustered_data['frameNum'] == i].reset_index().drop(columns='index')
-            next_f = clustered_data_agg[clustered_data_agg['frameNum'] == i + 1].reset_index().drop(columns='index')
-            used_current_f = [0 for _ in range(len(current_f))]
+            current_f = global_clustered_data[global_clustered_data['frameNum'] == i].reset_index(drop=True)
+            next_f = clustered_data_agg[clustered_data_agg['frameNum'] == i + 1].reset_index(drop=True)
+            cost_matrix = np.zeros((len(current_f), len(next_f)))
 
-            for idx_next, next_row in next_f.iterrows():
-                obs = next_row[['xPos', 'yPos', 'zPos']].values
-                best_dist = float('inf')
-                best_id = None
+            for i1, row1 in current_f.iterrows():
+                g_id = row1['global_cluster'] + glob_clust_start
+                pred = self.trackers[g_id].predict()
+                for i2, row2 in next_f.iterrows():
+                    obs = row2[['xPos', 'yPos', 'zPos']].values
+                    cost_matrix[i1, i2] = np.linalg.norm(pred - obs)
 
-                for idx_cur, cur_row in current_f.iterrows():
-                    g_id = cur_row['global_cluster'] + glob_clust_start
-                    pred = self.trackers[g_id].predict()
-                    dist = np.linalg.norm(pred - obs)
+            row_idx, col_idx = linear_sum_assignment(cost_matrix)
 
-                    if dist < best_dist:
-                        best_dist = dist
-                        best_id = g_id
+            assigned_next = set()
+            for r, c in zip(row_idx, col_idx):
+                if cost_matrix[r, c] < 3.5:
+                    next_f.loc[c, 'global_cluster'] = current_f.loc[r, 'global_cluster']
+                    obs = next_f.loc[c, ['xPos', 'yPos', 'zPos']].values
+                    g_id = current_f.loc[r, 'global_cluster'] + glob_clust_start
+                    self.trackers[g_id].update(obs)
+                    assigned_next.add(c)
 
-                if best_dist < 3.5:
-                    next_f.loc[idx_next, 'global_cluster'] = best_id
-                    self.trackers[best_id].update(obs)
-                else:
-                    next_f.loc[idx_next, 'global_cluster'] = generated_cluster_n
+            for i2, row2 in next_f.iterrows():
+                if i2 not in assigned_next:
+                    next_f.loc[i2, 'global_cluster'] = generated_cluster_n
+                    obs = row2[['xPos', 'yPos', 'zPos']].values
                     self.trackers[generated_cluster_n] = ClusterKalman(obs)
                     generated_cluster_n += 1
 
-            global_clustered_data = pd.concat([global_clustered_data, next_f]).reset_index().drop(columns='index')
+            global_clustered_data = pd.concat([global_clustered_data, next_f]).reset_index(drop=True)
 
         global_clustered_data["global_cluster"] = global_clustered_data["global_cluster"].fillna(-1 * glob_clust_start - 1) + glob_clust_start
         global_clustered_data = global_clustered_data.drop(columns=["xPos","yPos","zPos"])
