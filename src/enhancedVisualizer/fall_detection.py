@@ -37,8 +37,9 @@ class FallDetection:
 
     #모델 로드
     def _load_model(self):
+        print(f"Loading model from {MODEL_PATH}")
         model = tf.keras.models.load_model(MODEL_PATH)
-        print("Model loaded successfully.")
+        print(f"Model loaded successfully. {MODEL_PATH}")
         return model
     
     def cluster_single_frame(self, frame_df):
@@ -150,7 +151,6 @@ class FallDetection:
                 new_list.append(elem)
         self.seq_list = new_list
 
-from addCluster import Cluster
 
 class InferThread(QThread):
     infer_signal = Signal(list)
@@ -162,7 +162,6 @@ class InferThread(QThread):
             QThread.__init__(self)
             # self.faldt = faldt
             self.data = point_data
-            self.cluster_util = Cluster()
 
             self.seq_size = SEQ_SIZE
             self.model = model
@@ -171,67 +170,67 @@ class InferThread(QThread):
             self.one_person_threshold = one_person_threshold
             self.min_frame_ratio = min_frame_ratio
 
-    # #프레임별 데이터 클러스터링
-    # def cluster_data(self):
-    #     data = self.data
-    #     unique_frame_numbers = {frame: idx + 1 for idx, frame in enumerate(data['frameNum'].unique())}
-    #     data['frameNum'] = data['frameNum'].map(unique_frame_numbers)
+    #프레임별 데이터 클러스터링
+    def cluster_data(self):
+        data = self.data
+        unique_frame_numbers = {frame: idx + 1 for idx, frame in enumerate(data['frameNum'].unique())}
+        data['frameNum'] = data['frameNum'].map(unique_frame_numbers)
 
-    #     clustered_data = pd.DataFrame(columns=data.columns)
+        clustered_data = pd.DataFrame(columns=data.columns)
 
-    #     for frame, group in data.groupby('frameNum'):
-    #         group_data = group[['xPos',
-    #                             'yPos',
-    #                             # 'zPos'
-    #                             ]]
+        for frame, group in data.groupby('frameNum'):
+            group_data = group[['xPos',
+                                'yPos',
+                                # 'zPos'
+                                ]]
 
-    #         dbscan = DBSCAN(eps=CLUST_EPS, min_samples=CLUST_MIN_SAMPLES)
-    #         clusters = dbscan.fit_predict(group_data)
-    #         group['cluster'] = clusters
-    #         clustered_data = pd.concat([clustered_data.dropna(axis=1, how='all'), group.dropna(axis=1, how='all')])
+            dbscan = DBSCAN(eps=CLUST_EPS, min_samples=CLUST_MIN_SAMPLES)
+            clusters = dbscan.fit_predict(group_data)
+            group['cluster'] = clusters
+            clustered_data = pd.concat([clustered_data.dropna(axis=1, how='all'), group.dropna(axis=1, how='all')])
 
-    #     clustered_data = clustered_data[clustered_data['cluster'] != -1].reset_index().drop(columns='index')
-    #     return list(set([i for i in range(1, self.seq_size + 1)]) - set(clustered_data['frameNum'].unique())), clustered_data
+        clustered_data = clustered_data[clustered_data['cluster'] != -1].reset_index().drop(columns='index')
+        return list(set([i for i in range(1, self.seq_size + 1)]) - set(clustered_data['frameNum'].unique())), clustered_data
 
     
-    # def kth_smallest_value(self, matrix, k):
-    #     flattened = np.ravel(matrix)
-    #     sorted_values = np.sort(flattened)
-    #     return sorted_values[k]
+    def kth_smallest_value(self, matrix, k):
+        flattened = np.ravel(matrix)
+        sorted_values = np.sort(flattened)
+        return sorted_values[k]
 
-    # #클러스터링 된 데이터 간 궤적 추적
-    # def track_clusters(self, clustered_data):
-    #     clustered_data_agg = clustered_data.groupby(['frameNum', 'cluster']).agg({'frameNum': 'first','cluster': 'first','xPos': 'mean','yPos': 'mean','zPos': 'mean','Doppler' : 'mean','SNR' : 'mean',}).reset_index(drop=True)
-    #     first_frame_num = clustered_data_agg['frameNum'].min()
-    #     global_clustered_data = clustered_data_agg[clustered_data_agg['frameNum'] == first_frame_num].copy()
-    #     global_clustered_data.loc[:,'global_cluster'] = global_clustered_data['cluster'].copy()
+    #클러스터링 된 데이터 간 궤적 추적
+    def track_clusters(self, clustered_data):
+        clustered_data_agg = clustered_data.groupby(['frameNum', 'cluster']).agg({'frameNum': 'first','cluster': 'first','xPos': 'mean','yPos': 'mean','zPos': 'mean','Doppler' : 'mean','SNR' : 'mean',}).reset_index(drop=True)
+        first_frame_num = clustered_data_agg['frameNum'].min()
+        global_clustered_data = clustered_data_agg[clustered_data_agg['frameNum'] == first_frame_num].copy()
+        global_clustered_data.loc[:,'global_cluster'] = global_clustered_data['cluster'].copy()
 
-    #     frame_len = len(clustered_data_agg['frameNum'].unique())
-    #     generated_cluster_n = int(global_clustered_data['global_cluster'].max()) + 1
+        frame_len = len(clustered_data_agg['frameNum'].unique())
+        generated_cluster_n = int(global_clustered_data['global_cluster'].max()) + 1
 
-    #     for i in range(first_frame_num, first_frame_num + frame_len - 1):
-    #         current_f = global_clustered_data[global_clustered_data['frameNum'] == i].reset_index().drop(columns='index')
-    #         next_f = clustered_data_agg[clustered_data_agg['frameNum'] == i + 1].reset_index().drop(columns='index')
-    #         used_current_f = [0 for i in range(len(current_f))]
-    #         distance_matrix = distance.cdist(current_f[['xPos', 'yPos', 'zPos']], next_f[['xPos', 'yPos', 'zPos']], metric='euclidean')
-    #         for j in range(distance_matrix.size):
-    #             min_value = self.kth_smallest_value(distance_matrix, j)
-    #             # [row], [col] = np.where(distance_matrix == min_value)
-    #             row, col = np.where(distance_matrix == min_value)
-    #             row = row[0]
-    #             col = col[0]
-    #             if used_current_f[row] == 1:
-    #                 continue
-    #             used_current_f[row] = 1
-    #             if min_value >= 3.5:
-    #                 next_f.loc[col, 'global_cluster'] = None
-    #             else:
-    #                 next_f.loc[col, 'global_cluster'] = current_f.loc[row, 'global_cluster']
-    #         g_arr = [i for i in range (generated_cluster_n, generated_cluster_n + next_f['global_cluster'].isna().sum())]
-    #         generated_cluster_n = generated_cluster_n + next_f['global_cluster'].isna().sum()
-    #         next_f.loc[next_f['global_cluster'].isna(), 'global_cluster'] = g_arr[:]
-    #         global_clustered_data = pd.concat([global_clustered_data, next_f]).reset_index().drop(columns='index')
-    #     return global_clustered_data
+        for i in range(first_frame_num, first_frame_num + frame_len - 1):
+            current_f = global_clustered_data[global_clustered_data['frameNum'] == i].reset_index().drop(columns='index')
+            next_f = clustered_data_agg[clustered_data_agg['frameNum'] == i + 1].reset_index().drop(columns='index')
+            used_current_f = [0 for i in range(len(current_f))]
+            distance_matrix = distance.cdist(current_f[['xPos', 'yPos', 'zPos']], next_f[['xPos', 'yPos', 'zPos']], metric='euclidean')
+            for j in range(distance_matrix.size):
+                min_value = self.kth_smallest_value(distance_matrix, j)
+                # [row], [col] = np.where(distance_matrix == min_value)
+                row, col = np.where(distance_matrix == min_value)
+                row = row[0]
+                col = col[0]
+                if used_current_f[row] == 1:
+                    continue
+                used_current_f[row] = 1
+                if min_value >= 3.5:
+                    next_f.loc[col, 'global_cluster'] = None
+                else:
+                    next_f.loc[col, 'global_cluster'] = current_f.loc[row, 'global_cluster']
+            g_arr = [i for i in range (generated_cluster_n, generated_cluster_n + next_f['global_cluster'].isna().sum())]
+            generated_cluster_n = generated_cluster_n + next_f['global_cluster'].isna().sum()
+            next_f.loc[next_f['global_cluster'].isna(), 'global_cluster'] = g_arr[:]
+            global_clustered_data = pd.concat([global_clustered_data, next_f]).reset_index().drop(columns='index')
+        return global_clustered_data
 
     #데이터 전처리(슬라이딩 윈도우)
     def prepare_data(self, data, window_size=MODEL_SEQ_SIZE):
@@ -247,6 +246,7 @@ class InferThread(QThread):
         print(f"Processing Cluster {idx}, Data Shape: {sequences.shape}")
         predictions = self.model.predict(sequences)
         answer = (np.argmax(predictions, axis=1))[0]
+        print(answer)
         if answer == 0:
             print("fall")
         elif answer == 1:
@@ -259,27 +259,18 @@ class InferThread(QThread):
         return answer
 
     def run(self):
-        # ret = self.cluster_data()
-        # # if cluster cannot found cluster in any frame
-        # if len(ret[0]) > 0:
-        #     self.noise_update_signal.emit(ret)
-        #     self.slot_signal.emit()
-        #     return
-        # else:
-        #     self.no_noise_signal.emit()
-
-        # self.infer_list = []
-        # # Global Clustering
-        # global_clustered = self.track_clusters(ret[1])
-        global_clustered = self.cluster_util.addCluster(self.data)
-
-        # 2. 클러스터링 실패 시 처리
-        if global_clustered.empty:
-            self.noise_update_signal.emit([])
+        ret = self.cluster_data()
+        # if cluster cannot found cluster in any frame
+        if len(ret[0]) > 0:
+            self.noise_update_signal.emit(ret)
             self.slot_signal.emit()
             return
         else:
             self.no_noise_signal.emit()
+
+        self.infer_list = []
+        # Global Clustering
+        global_clustered = self.track_clusters(ret[1])
         for cluster_id, cluster_df in global_clustered.groupby("global_cluster"):
             if len(cluster_df) > MODEL_SEQ_SIZE:
                 self.infer_list.append((cluster_id, cluster_df))
