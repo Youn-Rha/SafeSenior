@@ -3,6 +3,7 @@
 
 * **데이터 입력 전처리 과정 및 기술 소개**
 <img src="../../img/RADHAR_Intro.png">
+
 ## **학습 결과**
 ### Model Loss Curve
 <img src="../../img/Model Loss Curve.png">
