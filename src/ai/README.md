@@ -4,6 +4,18 @@
 * **데이터 입력 전처리 과정 및 기술 소개**
 <img src="../../img/RADHAR_Intro.png">
 
+## 데이터 구성
+### 총 90분 분량으로 클래스 별로 30분 분량으로 구성-60프레임의 클립 형태
+
+* **낙상(Fall)**
+<img src="../../img/fall.gif">
+
+* **일어섬(StandUp)**
+<img src="../../img/StandUp.gif">
+
+* **걷기(walking)**
+<img src="../../img/walking.gif">
+
 ## **학습 결과**
 ### Model Loss Curve
 <img src="../../img/Model Loss Curve.png">
